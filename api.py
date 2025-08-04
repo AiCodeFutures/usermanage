@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-
-from db import database, models
+import database
+import models
 
 database.init_db()
 
@@ -26,14 +26,13 @@ class UserUpdate(BaseModel):
 
 @app.get("/users", response_model=list)
 def read_users():
-    users = models.get_all_users()
-    return users
+    return models.get_all_users()
 
 @app.get("/users/{user_id}", response_model=User)
 def read_user(user_id: int):
     user = models.get_user_by_id(user_id)
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="用户未找到")
     return user
 
 @app.post("/users", response_model=User)
@@ -46,16 +45,15 @@ def create_new_user(user: UserCreate):
 def update_existing_user(user_id: int, user: UserUpdate):
     updated = models.update_user(user_id, user.username, user.email, user.remark)
     if not updated:
-        raise HTTPException(status_code=400, detail="No field to update")
+        raise HTTPException(status_code=400, detail="更新失败")
     updated_user = models.get_user_by_id(user_id)
     if not updated_user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="用户未找到")
     return updated_user
 
 @app.delete("/users/{user_id}")
 def delete_existing_user(user_id: int):
-    user = models.get_user_by_id(user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    if not models.get_user_by_id(user_id):
+        raise HTTPException(status_code=404, detail="用户未找到")
     models.delete_user(user_id)
-    return {"detail": "User deleted"}
+    return {"detail": "删除成功"}
