@@ -77,7 +77,7 @@ def read_users():
     Returns:
         list: 包含所有用户信息的列表
     """
-    return models.get_all_users()
+    return database.get_all_users()
 
 @app.get("/users/{user_id}", response_model=User)
 def read_user(user_id: int):
