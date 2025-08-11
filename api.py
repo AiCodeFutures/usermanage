@@ -56,10 +56,8 @@ class UserCreate(BaseModel):
 class UserUpdate(BaseModel):
     """
     用户更新模型类。
-
     用于更新用户信息的数据模型，包含用户名、邮箱和备注字段。
     所有字段都是可选的，可以单独或组合更新。
-
     Attributes:
         username (str, optional): 用户名
         email (str, optional): 邮箱地址
