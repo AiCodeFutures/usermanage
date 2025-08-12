@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import database
+import uvicorn
 
 database.init_db()
 
@@ -39,6 +40,7 @@ class User(BaseModel):
     remark: str = None
     created_at: str
 
+
 class UserCreate(BaseModel):
     """用户创建模型
 
@@ -66,6 +68,10 @@ class UserUpdate(BaseModel):
     username: str = None
     email: str = None
     remark: str = None
+
+@app.get("/")
+def index():
+    return {"message": "Hello, World!"}
 
 @app.get("/users", response_model=list)
 def read_users():
@@ -106,3 +112,6 @@ def delete_existing_user(user_id: int):
         raise HTTPException(status_code=404, detail="用户未找到")
     database.delete_user(user_id)
     return {"detail": "删除成功"}
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
