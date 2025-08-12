@@ -1,117 +1,175 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
+from typing import List, Optional
 import database
 import uvicorn
+import hashlib
 
+# Initialize the database
 database.init_db()
 
-app = FastAPI()
+# --- Pydantic Models ---
 
-class User(BaseModel):
-    """
-    用户模型类
-
-    这是一个基于 Pydantic BaseModel 的用户数据模型，用于定义用户的基本属性和数据结构。
-
-    Attributes:
-        id (int): 用户的唯一标识符，主键
-        username (str): 用户名，用于用户登录和识别
-        email (str): 用户的电子邮箱地址
-        remark (str, optional): 用户备注信息，可选字段，默认为 None
-        created_at (str): 用户创建时间，以字符串格式存储
-
-    Note:
-        该模型继承自 Pydantic 的 BaseModel，提供了自动的数据验证、序列化和反序列化功能。
-        所有字段都会根据类型注解进行自动验证。
-
-    Example:
-        创建用户实例：
-        >>> user = User(
-        ...     id=1,
-        ...     username="john_doe",
-        ...     email="john@example.com",
-        ...     remark="测试用户",
-        ...     created_at="2023-01-01T00:00:00"
-        ... )
-    """
-    id: int
+class UserBase(BaseModel):
     username: str
     email: str
-    remark: str = None
-    created_at: str
+    remark: Optional[str] = None
+    height: Optional[float] = None
+    weight: Optional[float] = None
+    age: Optional[int] = None
+    is_admin: Optional[bool] = False
 
-
-class UserCreate(BaseModel):
-    """用户创建模型
-
-    用于创建新用户时的数据验证和传输。
-
-    Attributes:
-        username (str): 用户名
-        email (str): 邮箱地址
-        remark (str, optional): 备注信息，默认为None
-    """
-    username: str
-    email: str
-    remark: str = None
+class UserCreate(UserBase):
+    password: str
 
 class UserUpdate(BaseModel):
-    """
-    用户更新模型类。
-    用于更新用户信息的数据模型，包含用户名、邮箱和备注字段。
-    所有字段都是可选的，可以单独或组合更新。
-    Attributes:
-        username (str, optional): 用户名
-        email (str, optional): 邮箱地址
-        remark (str, optional): 备注信息
-    """
-    username: str = None
-    email: str = None
-    remark: str = None
+    username: Optional[str] = None
+    email: Optional[str] = None
+    password: Optional[str] = None
+    remark: Optional[str] = None
+    is_admin: Optional[bool] = None
+    height: Optional[float] = None
+    weight: Optional[float] = None
+    age: Optional[int] = None
 
-@app.get("/")
+class User(UserBase):
+    id: int
+    created_at: str
+
+    class Config:
+        orm_mode = True
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
+# --- FastAPI App ---
+
+app = FastAPI(
+    title="User Management API",
+    description="API for managing users in the user management system.",
+    version="1.0.0",
+)
+
+# --- Helper Functions ---
+
+def hash_password(password: str) -> str:
+    """Hashes a password using SHA256."""
+    return hashlib.sha256(password.encode()).hexdigest()
+
+# --- API Endpoints ---
+
+@app.get("/", tags=["General"])
 def index():
-    return {"message": "Hello, World!"}
+    """Root endpoint providing a welcome message."""
+    return {"message": "Welcome to the User Management API!"}
 
-@app.get("/users", response_model=list)
-def read_users():
+@app.post("/login", response_model=User, tags=["Authentication"])
+def login(form_data: UserLogin):
     """
-    获取所有用户列表
-
-    Returns:
-        list: 包含所有用户信息的列表
+    Authenticate a user. The API will hash the provided password for comparison.
     """
-    return database.get_all_users()
-
-@app.get("/users/{user_id}", response_model=User)
-def read_user(user_id: int):
-    user = database.get_user_by_id(user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="用户未找到")
+    user = database.get_user_by_email(form_data.email)
+    if not user or not hash_password(form_data.password) == user['password']:
+        raise HTTPException(
+            status_code=401,
+            detail="Incorrect email or password",
+        )
     return user
 
-@app.post("/users", response_model=User)
+@app.get("/users", response_model=List[User], tags=["Users"])
+def read_users(skip: int = 0, limit: int = 100):
+    """
+    Retrieve a list of users with pagination.
+    """
+    users = database.get_all_users(skip=skip, limit=limit)
+    return users
+
+@app.get("/users/count", response_model=int, tags=["Users"])
+def get_users_count():
+    """
+    Get the total number of registered users.
+    """
+    return database.get_total_users_count()
+
+@app.get("/users/search", response_model=List[User], tags=["Users"])
+def search_users_endpoint(query: str = Query(..., min_length=1)):
+    """
+    Search for users by username, email, or remark.
+    """
+    return database.search_users(query)
+
+@app.get("/users/{user_id}", response_model=User, tags=["Users"])
+def read_user(user_id: int):
+    """
+    Retrieve a single user by their ID.
+    """
+    user = database.get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+@app.post("/users", response_model=User, status_code=201, tags=["Users"])
 def create_new_user(user: UserCreate):
-    new_id = database.create_user(user.username, user.email, user.remark)
+    """
+    Create a new user. The API will hash the password.
+    """
+    db_user = database.get_user_by_email(user.email)
+    if db_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    hashed_password = hash_password(user.password)
+
+    new_id = database.create_user(
+        username=user.username,
+        email=user.email,
+        password=hashed_password,
+        remark=user.remark,
+        is_admin=user.is_admin,
+        height=user.height,
+        weight=user.weight,
+        age=user.age
+    )
+
     new_user = database.get_user_by_id(new_id)
+    if not new_user:
+        raise HTTPException(status_code=500, detail="Could not create user.")
+
     return new_user
 
-@app.put("/users/{user_id}", response_model=User)
+@app.put("/users/{user_id}", response_model=User, tags=["Users"])
 def update_existing_user(user_id: int, user: UserUpdate):
-    updated = database.update_user(user_id, user.username, user.email, user.remark)
-    if not updated:
-        raise HTTPException(status_code=400, detail="更新失败")
+    """
+    Update a user's information. Hashes the password if provided.
+    """
+    db_user = database.get_user_by_id(user_id)
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    update_data = user.dict(exclude_unset=True)
+
+    if 'password' in update_data and update_data['password']:
+        update_data['password'] = hash_password(update_data['password'])
+    else:
+        update_data.pop('password', None)
+
+    database.update_user(user_id, **update_data)
+
     updated_user = database.get_user_by_id(user_id)
-    if not updated_user:
-        raise HTTPException(status_code=404, detail="用户未找到")
     return updated_user
 
-@app.delete("/users/{user_id}")
+@app.delete("/users/{user_id}", status_code=204, tags=["Users"])
 def delete_existing_user(user_id: int):
-    if not database.get_user_by_id(user_id):
-        raise HTTPException(status_code=404, detail="用户未找到")
+    """
+    Delete a user by ID.
+    """
+    db_user = database.get_user_by_id(user_id)
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
     database.delete_user(user_id)
-    return {"detail": "删除成功"}
+    # A 204 response must not have a body.
+    return
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
