@@ -72,6 +72,12 @@ class UserUpdate(BaseModel):
 @app.get("/")
 def index():
     return {"message": "Hello, World!"}
+'''
+对于app.add_api_route的参数举例(这破函数参数怎么这么多啊,根本背不过啊混蛋!)
+app.add_api_route(path: str, endpoint: Callable, *, methods: List[str] = None, response_model: Type[BaseModel] = None, status_code: int = None, tags: List[str] = None, summary: str = None, description: str = None, response_description: str = None, responses: Dict = None, response_class: Type[Response] = None, deprecated: bool = None, openapi_extra: dict = None)
+'''
+
+
 
 @app.get("/users", response_model=list)
 def read_users():
