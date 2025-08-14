@@ -101,11 +101,14 @@ def get_user_by_email(email):
     conn.close()
     return dict(row) if row else None
 
-def create_user(username, email, remark, is_admin=0, height=None, weight=None, age=None):
+def create_user(username, email, password, remark=None, is_admin=0, height=None, weight=None, age=None):
+    """创建用户。若 username/email 已存在会抛出 sqlite3.IntegrityError。"""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("INSERT INTO users (username, email, password, remark, is_admin, height, \
-         weight, age) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (username, email, "123456", remark, is_admin, height, weight, age))
+    cursor.execute(
+        "INSERT INTO users (username, email, password, remark, is_admin, height, weight, age) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (username, email, password, remark, is_admin, height, weight, age)
+    )
     conn.commit()
     new_id = cursor.lastrowid
     conn.close()
@@ -120,7 +123,7 @@ def authenticate_user(email, password):
     conn.close()
     return dict(row) if row else None
 
-def update_user(user_id, username=None, email=None, remark=None, is_admin=None, height=None, weight=None, age=None):
+def update_user(user_id, username=None, email=None, password=None, remark=None, is_admin=None, height=None, weight=None, age=None):
     conn = get_connection() # 注意：这里之前是 get_db_connection()，已更正为 get_connection()
     cursor = conn.cursor()
     updates = []
@@ -132,9 +135,9 @@ def update_user(user_id, username=None, email=None, remark=None, is_admin=None, 
     if email is not None:
         updates.append("email = ?")
         params.append(email)
-    # if password is not None:
-        # updates.append("password = ?")
-        # params.append(password)
+    if password is not None:
+        updates.append("password = ?")
+        params.append(password)
     if remark is not None:
         updates.append("remark = ?")
         params.append(remark)

@@ -50,6 +50,7 @@ def login_page():
                     st.session_state['logged_in'] = True
                     st.session_state['username'] = user['username']
                     st.session_state['user_id'] = user['id']
+                    st.session_state['email'] = user['email'] # Store email in session state
                     st.session_state['is_admin'] = bool(user.get('is_admin', False))
                     st.success(f"欢迎回来, {user['username']}!")
                     st.rerun()
@@ -133,6 +134,7 @@ else:
         menu_options = ["列出所有用户", "添加用户", "更新用户", "搜索用户"]
         if st.session_state.get('is_admin'):
             menu_options.extend(["删除用户", "管理用户权限"])
+        menu_options.append("智能身材方案")  # Add AI plan menu for logged in users
             
         menu = st.selectbox("请选择操作", menu_options)
         st.button("退出登录", on_click=logout)
@@ -257,16 +259,12 @@ else:
                     if not password_to_confirm:
                         st.error("请输入您的密码以确认操作。")
                     else:
-                        # First, get the admin's email
-                        admin_id = st.session_state['user_id']
-                        admin_response = requests.get(f"{API_URL}/users/{admin_id}")
-                        if not admin_response.ok:
-                            handle_api_error(admin_response, "获取管理员信息")
-                            st.stop()
-                        
-                        admin_email = admin_response.json()['email']
-
                         # Authenticate admin before deleting
+                        admin_email = st.session_state.get('email')
+                        if not admin_email:
+                            st.error("无法获取管理员邮箱，请重新登录。")
+                            st.stop()
+
                         login_response = requests.post(f"{API_URL}/login", json={"email": admin_email, "password": password_to_confirm})
                         if login_response.ok:
                             delete_response = requests.delete(f"{API_URL}/users/{selected_id}")
@@ -323,3 +321,46 @@ else:
                             handle_api_error(update_response, "更新权限")
         except requests.exceptions.RequestException as e:
             st.error(f"无法连接到API: {e}")
+
+    elif menu == "智能身材方案":
+        st.header("智能身材控制方案 (DeepSeek)")
+        st.markdown("输入你的基本数据，获取 BMI 与 AI 生成的 7 日方案。")
+        with st.form("bmi_form"):
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                height = st.number_input("身高(cm)", min_value=50.0, max_value=250.0, value=170.0, step=0.5)
+            with col2:
+                weight = st.number_input("体重(kg)", min_value=20.0, max_value=300.0, value=65.0, step=0.1)
+            with col3:
+                age = st.number_input("年龄", min_value=5, max_value=100, value=30, step=1)
+            gender = st.selectbox("性别", ["未提供", "male", "female"], index=0)
+            goal = st.selectbox("目标", ["未明确", "fat_loss", "muscle_gain", "recomposition"], index=0)
+            submitted = st.form_submit_button("生成方案")
+        if submitted:
+            payload = {
+                "height": height,
+                "weight": weight,
+                "age": age,
+                "gender": None if gender == "未提供" else gender,
+                "goal": None if goal == "未明确" else goal
+            }
+            try:
+                resp = requests.post(f"{API_URL}/bmi/plan", json=payload, timeout=60)
+                if resp.ok:
+                    data = resp.json()
+                    st.subheader("基础指标")
+                    st.write(f"BMI: {data['bmi']} ({data['bmi_category']})")
+                    st.info(data['suggestion'])
+                    if data.get('ai_plan'):
+                        st.subheader("AI 方案")
+                        st.markdown(data['ai_plan'])
+                    else:
+                        st.warning("未生成 AI 方案 (可能未配置密钥)")
+                else:
+                    try:
+                        detail = resp.json().get('detail')
+                    except Exception:
+                        detail = resp.text
+                    st.error(f"生成失败: {detail}")
+            except requests.exceptions.RequestException as e:
+                st.error(f"请求异常: {e}")
