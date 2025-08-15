@@ -53,6 +53,20 @@ def init_db():
         conn.commit()
         print("Added 'age' column to 'users' table.")
 
+    # 创建 plans 表
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS plans (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            bmi REAL NOT NULL,
+            bmi_category TEXT NOT NULL,
+            suggestion TEXT,
+            ai_plan TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users (id)
+        )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -143,7 +157,7 @@ def update_user(user_id, username=None, email=None, password=None, remark=None, 
         params.append(remark)
     if is_admin is not None:
         updates.append("is_admin = ?")
-        params.append(1 if is_admin else 0)
+        params.append(is_admin)
     if height is not None:
         updates.append("height = ?")
         params.append(height)
@@ -172,3 +186,27 @@ def delete_user(user_id):
     conn.commit()
     conn.close()
     return True
+
+# --- Plan CRUD Functions ---
+
+def create_plan(user_id: int, bmi: float, bmi_category: str, suggestion: str, ai_plan: str):
+    """为用户创建一个新的方案记录"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO plans (user_id, bmi, bmi_category, suggestion, ai_plan) VALUES (?, ?, ?, ?, ?)",
+        (user_id, bmi, bmi_category, suggestion, ai_plan)
+    )
+    conn.commit()
+    new_id = cursor.lastrowid
+    conn.close()
+    return new_id
+
+def get_plans_by_user_id(user_id: int):
+    """根据用户ID获取所有方案"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM plans WHERE user_id = ? ORDER BY created_at DESC", (user_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]

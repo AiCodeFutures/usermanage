@@ -333,16 +333,29 @@ else:
                 weight = st.number_input("体重(kg)", min_value=20.0, max_value=300.0, value=65.0, step=0.1)
             with col3:
                 age = st.number_input("年龄", min_value=5, max_value=100, value=30, step=1)
-            gender = st.selectbox("性别", ["未提供", "male", "female"], index=0)
-            goal = st.selectbox("目标", ["未明确", "fat_loss", "muscle_gain", "recomposition"], index=0)
+            gender = st.selectbox("性别", ["未提供", "男", "女"], index=0)
+            
+            goal_options = {
+                "未明确": "not_specified",
+                "减脂": "fat_loss",
+                "增肌": "muscle_gain",
+                "身体重组": "recomposition"
+            }
+            selected_goal_label = st.selectbox("目标", list(goal_options.keys()), index=0)
+            goal = goal_options[selected_goal_label]
+
             submitted = st.form_submit_button("生成方案")
         if submitted:
+            
+            gender_map = {"男": "male", "女": "female"}
+            
             payload = {
                 "height": height,
                 "weight": weight,
                 "age": age,
-                "gender": None if gender == "未提供" else gender,
-                "goal": None if goal == "未明确" else goal
+                "gender": gender_map.get(gender),
+                "goal": None if goal == "not_specified" else goal,
+                "user_id": st.session_state['user_id']  # 关联当前用户
             }
             try:
                 resp = requests.post(f"{API_URL}/bmi/plan", json=payload, timeout=60)
@@ -364,3 +377,43 @@ else:
                     st.error(f"生成失败: {detail}")
             except requests.exceptions.RequestException as e:
                 st.error(f"请求异常: {e}")
+
+        # 显示历史方案
+        st.markdown("---")
+        st.subheader("历史方案记录")
+        try:
+            plans_response = requests.get(f"{API_URL}/users/{st.session_state['user_id']}/plans")
+            if plans_response.ok:
+                plans = plans_response.json()
+                if not plans:
+                    st.info("暂无历史方案记录。")
+                else:
+                    for i, plan in enumerate(plans):
+                        with st.expander(f"方案 {i+1} - {plan['created_at']}"):
+                            st.write(f"**BMI:** {plan['bmi']} ({plan['bmi_category']})")
+                            st.write(f"**基础建议:** {plan['suggestion']}")
+                            st.markdown("**AI 方案:**")
+                            st.markdown(plan['ai_plan'])
+                            
+                            # 准备下载内容
+                            download_content = f"""
+# 智能身材方案 ({plan['created_at']})
+
+## 基础指标
+- **BMI:** {plan['bmi']} ({plan['bmi_category']})
+- **基础建议:** {plan['suggestion']}
+
+## AI 智能方案
+{plan['ai_plan']}
+"""
+                            st.download_button(
+                                label="下载此方案 (Markdown)",
+                                data=download_content,
+                                file_name=f"plan_{plan['id']}_{plan['created_at']}.md",
+                                mime="text/markdown",
+                                key=f"download_{plan['id']}"
+                            )
+            else:
+                handle_api_error(plans_response, "获取历史方案")
+        except requests.exceptions.RequestException as e:
+            st.error(f"获取历史方案失败: {e}")

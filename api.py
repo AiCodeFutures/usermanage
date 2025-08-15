@@ -1,9 +1,13 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from pydantic import BaseModel
 import database
 import uvicorn
 import os
 from typing import Optional
+try:
+    import apikey
+except ImportError:
+    apikey = None
 
 try:
     from openai import OpenAI
@@ -74,6 +78,7 @@ class BMIRequest(BaseModel):
     age: int
     gender: Optional[str] = None  # 'male' | 'female'
     goal: Optional[str] = None    # e.g. 'fat_loss', 'muscle_gain', 'recomposition'
+    user_id: int # 新增，用于关联用户
 
 class BMIPlanResponse(BaseModel):
     bmi: float
@@ -216,7 +221,9 @@ def generate_bmi_plan(data: BMIRequest):
     suggestion = _basic_suggestion(bmi, data.age, data.goal)
 
     ai_plan = None
-    api_key = os.getenv('DEEPSEEK_API_KEY') or os.getenv('OPENAI_API_KEY')
+    # 优先从 apikey.py 读取, 其次是环境变量
+    api_key_from_file = getattr(apikey, 'apikey', None)
+    api_key = api_key_from_file if api_key_from_file and api_key_from_file != "你的key" else os.getenv('DEEPSEEK_API_KEY') or os.getenv('OPENAI_API_KEY')
     base_url = os.getenv('DEEPSEEK_BASE_URL')  # 如 https://api.deepseek.com
     # 仅在安装了 openai 包且存在 key 时尝试
     if api_key and _openai_available:
@@ -237,7 +244,22 @@ def generate_bmi_plan(data: BMIRequest):
             # 不抛出，返回基础建议即可
             ai_plan = f"AI 方案生成失败: {e}"
 
+    # 如果成功生成了AI方案，则保存到数据库
+    if ai_plan and "生成失败" not in ai_plan:
+        database.create_plan(
+            user_id=data.user_id,
+            bmi=bmi,
+            bmi_category=category,
+            suggestion=suggestion,
+            ai_plan=ai_plan
+        )
+
     return BMIPlanResponse(bmi=bmi, bmi_category=category, suggestion=suggestion, ai_plan=ai_plan)
+
+@app.get("/users/{user_id}/plans", response_model=list)
+def get_user_plans(user_id: int):
+    """获取指定用户的所有历史方案"""
+    return database.get_plans_by_user_id(user_id)
 
 # 删除示例调用代码，避免在导入时就执行外部请求
 
