@@ -376,6 +376,7 @@ else:
                         detail = resp.text
                     st.error(f"生成失败: {detail}")
             except requests.exceptions.RequestException as e:
+                
                 st.error(f"请求异常: {e}")
 
         # 显示历史方案
@@ -398,7 +399,7 @@ else:
                             # 准备下载内容
                             download_content = f"""
 # 智能身材方案 ({plan['created_at']})
-
+后卡片机哦老婆卡普空可怕了;
 ## 基础指标
 - **BMI:** {plan['bmi']} ({plan['bmi_category']})
 - **基础建议:** {plan['suggestion']}
